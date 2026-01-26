@@ -9,6 +9,11 @@ const App = {
         // Load saved state from localStorage
         this.loadState();
 
+        // Check authentication
+        if (!AuthPage.isAuthenticated() && window.location.hash !== '#login') {
+            window.location.hash = '#login';
+        }
+
         // Setup routing
         this.setupRouting();
 
@@ -49,9 +54,16 @@ const App = {
         const hash = window.location.hash.slice(1); // Remove #
         const [page, ...params] = hash.split('/');
 
-        if (page && ['home', 'my-bets', 'in-play', 'profile'].includes(page)) {
+        // Valid pages including login
+        const validPages = ['home', 'my-bets', 'in-play', 'profile', 'login'];
+
+        if (page && validPages.includes(page)) {
             this.currentPage = page;
             this.pageParams = params;
+        } else if (!AuthPage.isAuthenticated()) {
+            this.currentPage = 'login';
+            this.pageParams = null;
+            window.location.hash = '#login';
         } else {
             this.currentPage = 'home';
             this.pageParams = null;
@@ -107,27 +119,44 @@ const App = {
         const mainContent = document.getElementById('main-content');
         const pageTitle = document.getElementById('page-title');
         const backBtn = document.getElementById('back-btn');
+        const header = document.querySelector('.top-header');
+        const bottomNav = document.querySelector('.bottom-nav');
+
+        // Hide header and nav on login page
+        if (this.currentPage === 'login') {
+            if (header) header.style.display = 'none';
+            if (bottomNav) bottomNav.style.display = 'none';
+        } else {
+            if (header) header.style.display = '';
+            if (bottomNav) bottomNav.style.display = '';
+        }
 
         // Update page title and back button visibility
         const titles = {
             'home': 'BetSphere',
             'my-bets': 'My Bets',
             'in-play': 'India vs Australia',
-            'profile': 'Profile'
+            'profile': 'Profile',
+            'login': 'Login'
         };
 
-        pageTitle.textContent = titles[this.currentPage] || 'BetSphere';
+        if (pageTitle) pageTitle.textContent = titles[this.currentPage] || 'BetSphere';
 
         // Show back button only on in-play page
-        if (this.currentPage === 'in-play') {
-            backBtn.classList.remove('hidden');
-        } else {
-            backBtn.classList.add('hidden');
+        if (backBtn) {
+            if (this.currentPage === 'in-play') {
+                backBtn.classList.remove('hidden');
+            } else {
+                backBtn.classList.add('hidden');
+            }
         }
 
         // Render page content
         let content = '';
         switch (this.currentPage) {
+            case 'login':
+                content = AuthPage.render();
+                break;
             case 'home':
                 content = HomePage.render();
                 break;
