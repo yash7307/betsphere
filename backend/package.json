@@ -8,7 +8,12 @@
     "dev": "nodemon server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["betting", "cricket", "api", "express"],
+  "keywords": [
+    "betting",
+    "cricket",
+    "api",
+    "express"
+  ],
   "author": "BetSphere",
   "license": "ISC",
   "dependencies": {
@@ -20,7 +25,8 @@
     "cors": "^2.8.5",
     "helmet": "^7.1.0",
     "express-rate-limit": "^7.1.5",
-    "razorpay": "^2.9.2",
+    "dodopayments": "^1.0.0",
+    "standardwebhooks": "^1.0.0",
     "axios": "^1.6.2",
     "moment": "^2.29.4",
     "validator": "^13.11.0"

@@ -1,15 +1,18 @@
-const Razorpay = require('razorpay');
-const crypto = require('crypto');
+const DodoPayments = require('dodopayments').default;
+const { Webhook } = require('standardwebhooks');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 
-// Initialize Razorpay
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET
+// Initialize Dodo Payments client
+const dodoClient = new DodoPayments({
+    bearerToken: process.env.DODO_PAYMENTS_API_KEY,
+    environment: process.env.DODO_ENVIRONMENT || 'test_mode'
 });
 
-// @desc    Create Razorpay order for deposit
+// Initialize webhook verifier
+const webhookVerifier = new Webhook(process.env.DODO_WEBHOOK_KEY || 'default_key');
+
+// @desc    Create Dodo checkout session for deposit
 // @route   POST /api/payment/create-order
 // @access  Private
 exports.createOrder = async (req, res) => {
@@ -24,74 +27,79 @@ exports.createOrder = async (req, res) => {
             });
         }
 
-        // Create Razorpay order
-        const options = {
-            amount: amount * 100, // amount in paise
-            currency: 'INR',
-            receipt: `receipt_${req.user.id}_${Date.now()}`,
-            notes: {
+        // Create Dodo checkout session
+        const session = await dodoClient.checkoutSessions.create({
+            payment_link: true,
+            billing: {
+                currency: 'INR',
+                amount: amount * 100 // Amount in paise
+            },
+            customer: {
+                email: req.user.email,
+                name: req.user.username
+            },
+            return_url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/#profile?payment=success`,
+            metadata: {
                 userId: req.user.id.toString(),
-                type: 'deposit'
+                type: 'deposit',
+                amount: amount.toString()
             }
-        };
-
-        const order = await razorpay.orders.create(options);
+        });
 
         res.status(200).json({
             success: true,
-            order: {
-                id: order.id,
-                amount: order.amount,
-                currency: order.currency
-            },
-            key: process.env.RAZORPAY_KEY_ID
+            checkoutUrl: session.checkout_url || session.url,
+            sessionId: session.id
         });
     } catch (error) {
+        console.error('Dodo Payment Error:', error);
         res.status(500).json({
             success: false,
-            message: error.message
+            message: error.message || 'Failed to create payment session'
         });
     }
 };
 
-// @desc    Verify Razorpay payment and add balance
+// @desc    Verify payment after redirect (client-side verification)
 // @route   POST /api/payment/verify
 // @access  Private
 exports.verifyPayment = async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        const { sessionId, amount } = req.body;
 
-        // Generate signature
-        const generated_signature = crypto
-            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-            .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-            .digest('hex');
-
-        // Verify signature
-        if (generated_signature !== razorpay_signature) {
+        if (!sessionId || !amount) {
             return res.status(400).json({
                 success: false,
-                message: 'Payment verification failed'
+                message: 'Session ID and amount are required'
             });
         }
 
-        // Fetch payment details from Razorpay
-        const payment = await razorpay.payments.fetch(razorpay_payment_id);
+        // Verify the session with Dodo
+        const session = await dodoClient.checkoutSessions.retrieve(sessionId);
 
-        if (payment.status !== 'captured') {
+        if (session.status !== 'complete' && session.status !== 'paid') {
             return res.status(400).json({
                 success: false,
-                message: 'Payment not captured'
+                message: 'Payment not completed'
             });
         }
 
-        const amount = payment.amount / 100; // Convert from paise to rupees
+        // Check if transaction already exists
+        const existingTxn = await Transaction.findOne({
+            'paymentDetails.sessionId': sessionId
+        });
+
+        if (existingTxn) {
+            return res.status(400).json({
+                success: false,
+                message: 'Transaction already processed'
+            });
+        }
 
         // Create transaction and update balance
         const transaction = await Transaction.createDeposit(req.user.id, amount, {
-            orderId: razorpay_order_id,
-            paymentId: razorpay_payment_id,
-            signature: razorpay_signature
+            sessionId: sessionId,
+            provider: 'dodo_payments'
         });
 
         // Get updated user
@@ -104,6 +112,7 @@ exports.verifyPayment = async (req, res) => {
             balance: user.balance
         });
     } catch (error) {
+        console.error('Payment Verification Error:', error);
         res.status(500).json({
             success: false,
             message: error.message
@@ -183,34 +192,53 @@ exports.getTransactions = async (req, res) => {
     }
 };
 
-// @desc    Razorpay webhook handler
+// @desc    Dodo Payments webhook handler
 // @route   POST /api/payment/webhook
-// @access  Public (but verified by signature)
+// @access  Public (verified by signature)
 exports.webhookHandler = async (req, res) => {
     try {
-        const signature = req.headers['x-razorpay-signature'];
-        const body = JSON.stringify(req.body);
+        const rawBody = JSON.stringify(req.body);
+        const webhookHeaders = {
+            'webhook-id': req.headers['webhook-id'] || '',
+            'webhook-signature': req.headers['webhook-signature'] || '',
+            'webhook-timestamp': req.headers['webhook-timestamp'] || ''
+        };
 
         // Verify webhook signature
-        const expectedSignature = crypto
-            .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-            .update(body)
-            .digest('hex');
-
-        if (signature !== expectedSignature) {
+        try {
+            await webhookVerifier.verify(rawBody, webhookHeaders);
+        } catch (verifyError) {
+            console.error('Webhook verification failed:', verifyError);
             return res.status(400).json({ success: false, message: 'Invalid signature' });
         }
 
-        const event = req.body.event;
-        const paymentEntity = req.body.payload.payment.entity;
+        const event = req.body;
+        const eventType = event.type || event.event;
 
         // Handle different webhook events
-        if (event === 'payment.captured') {
-            console.log('✅ Payment captured:', paymentEntity.id);
-            // Additional processing if needed
-        } else if (event === 'payment.failed') {
-            console.log('❌ Payment failed:', paymentEntity.id);
-            // Handle failed payment
+        if (eventType === 'payment.succeeded' || eventType === 'checkout.completed') {
+            console.log('✅ Payment succeeded:', event.data?.id || event.id);
+
+            const metadata = event.data?.metadata || event.metadata;
+            if (metadata && metadata.userId && metadata.amount) {
+                const userId = metadata.userId;
+                const amount = parseFloat(metadata.amount);
+
+                // Check if already processed
+                const existing = await Transaction.findOne({
+                    'paymentDetails.webhookEventId': event.id
+                });
+
+                if (!existing) {
+                    await Transaction.createDeposit(userId, amount, {
+                        webhookEventId: event.id,
+                        provider: 'dodo_payments'
+                    });
+                    console.log(`✅ Deposit of ₹${amount} processed for user ${userId}`);
+                }
+            }
+        } else if (eventType === 'payment.failed') {
+            console.log('❌ Payment failed:', event.data?.id || event.id);
         }
 
         res.status(200).json({ success: true });

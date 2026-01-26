@@ -32,6 +32,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/bets', require('./routes/bets'));
 app.use('/api/payment', require('./routes/payment'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/cricket', require('./routes/cricket'));
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -54,7 +55,8 @@ app.get('/', (req, res) => {
             auth: '/api/auth',
             bets: '/api/bets',
             payment: '/api/payment',
-            admin: '/api/admin'
+            admin: '/api/admin',
+            cricket: '/api/cricket'
         }
     });
 });
