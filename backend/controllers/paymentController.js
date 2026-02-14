@@ -3,14 +3,38 @@ const { Webhook } = require('standardwebhooks');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 
-// Initialize Dodo Payments client
-const dodoClient = new DodoPayments({
-    bearerToken: process.env.DODO_PAYMENTS_API_KEY,
-    environment: process.env.DODO_ENVIRONMENT || 'test_mode'
-});
+// Lazy-initialize Dodo Payments client to avoid crash when API key is missing
+let _dodoClient = null;
+function getDodoClient() {
+    if (!_dodoClient) {
+        if (!process.env.DODO_PAYMENTS_API_KEY) {
+            throw new Error('DODO_PAYMENTS_API_KEY is not configured. Payment features are unavailable.');
+        }
+        _dodoClient = new DodoPayments({
+            bearerToken: process.env.DODO_PAYMENTS_API_KEY,
+            environment: process.env.DODO_ENVIRONMENT || 'test_mode'
+        });
+    }
+    return _dodoClient;
+}
 
-// Initialize webhook verifier
-const webhookVerifier = new Webhook(process.env.DODO_WEBHOOK_KEY || 'default_key');
+// Warn at load time if payment key is missing (but don't crash)
+if (!process.env.DODO_PAYMENTS_API_KEY) {
+    console.warn('⚠️  DODO_PAYMENTS_API_KEY not set — payment endpoints will return errors until configured.');
+}
+
+// Lazy-initialize webhook verifier to avoid crash with invalid/missing key
+let _webhookVerifier = null;
+function getWebhookVerifier() {
+    if (!_webhookVerifier) {
+        const key = process.env.DODO_WEBHOOK_KEY;
+        if (!key) {
+            throw new Error('DODO_WEBHOOK_KEY is not configured. Webhook verification is unavailable.');
+        }
+        _webhookVerifier = new Webhook(key);
+    }
+    return _webhookVerifier;
+}
 
 // @desc    Create Dodo checkout session for deposit
 // @route   POST /api/payment/create-order
@@ -28,7 +52,7 @@ exports.createOrder = async (req, res) => {
         }
 
         // Create Dodo checkout session
-        const session = await dodoClient.checkoutSessions.create({
+        const session = await getDodoClient().checkoutSessions.create({
             payment_link: true,
             billing: {
                 currency: 'INR',
@@ -75,7 +99,7 @@ exports.verifyPayment = async (req, res) => {
         }
 
         // Verify the session with Dodo
-        const session = await dodoClient.checkoutSessions.retrieve(sessionId);
+        const session = await getDodoClient().checkoutSessions.retrieve(sessionId);
 
         if (session.status !== 'complete' && session.status !== 'paid') {
             return res.status(400).json({
@@ -206,7 +230,7 @@ exports.webhookHandler = async (req, res) => {
 
         // Verify webhook signature
         try {
-            await webhookVerifier.verify(rawBody, webhookHeaders);
+            await getWebhookVerifier().verify(rawBody, webhookHeaders);
         } catch (verifyError) {
             console.error('Webhook verification failed:', verifyError);
             return res.status(400).json({ success: false, message: 'Invalid signature' });

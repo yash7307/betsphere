@@ -208,10 +208,12 @@ const ProfilePage = {
             helpers.showLoading();
             setTimeout(() => {
                 helpers.hideLoading();
+                // Clear auth token and navigate to login
+                helpers.storage.remove('auth_token');
+                helpers.storage.remove('user_data');
                 helpers.showToast('Logged out successfully', 'success');
-                // In a real app, would redirect to login page
-                window.App.navigate('home');
-            }, 1000);
+                window.App.navigate('login');
+            }, 500);
         }
     }
 };

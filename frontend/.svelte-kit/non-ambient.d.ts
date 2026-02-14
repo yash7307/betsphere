@@ -1,0 +1,46 @@
+
+// this file is generated — do not edit it
+
+
+declare module "svelte/elements" {
+	export interface HTMLAttributes<T> {
+		'data-sveltekit-keepfocus'?: true | '' | 'off' | undefined | null;
+		'data-sveltekit-noscroll'?: true | '' | 'off' | undefined | null;
+		'data-sveltekit-preload-code'?:
+			| true
+			| ''
+			| 'eager'
+			| 'viewport'
+			| 'hover'
+			| 'tap'
+			| 'off'
+			| undefined
+			| null;
+		'data-sveltekit-preload-data'?: true | '' | 'hover' | 'tap' | 'off' | undefined | null;
+		'data-sveltekit-reload'?: true | '' | 'off' | undefined | null;
+		'data-sveltekit-replacestate'?: true | '' | 'off' | undefined | null;
+	}
+}
+
+export {};
+
+
+declare module "$app/types" {
+	export interface AppTypes {
+		RouteId(): "/" | "/in-play" | "/in-play/[matchId]" | "/login" | "/my-bets" | "/profile";
+		RouteParams(): {
+			"/in-play/[matchId]": { matchId: string }
+		};
+		LayoutParams(): {
+			"/": { matchId?: string };
+			"/in-play": { matchId?: string };
+			"/in-play/[matchId]": { matchId: string };
+			"/login": Record<string, never>;
+			"/my-bets": Record<string, never>;
+			"/profile": Record<string, never>
+		};
+		Pathname(): "/" | "/in-play" | "/in-play/" | `/in-play/${string}` & {} | `/in-play/${string}/` & {} | "/login" | "/login/" | "/my-bets" | "/my-bets/" | "/profile" | "/profile/";
+		ResolvedPathname(): `${"" | `/${string}`}${ReturnType<AppTypes['Pathname']>}`;
+		Asset(): string & {};
+	}
+}
