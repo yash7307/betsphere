@@ -1,9 +1,4 @@
 import { a4 as attr, a0 as store_get, Z as attr_class, _ as stringify, $ as ensure_array_like, a1 as attr_style, a2 as unsubscribe_stores } from "../../../chunks/index2.js";
-import "@sveltejs/kit/internal";
-import "../../../chunks/exports.js";
-import "../../../chunks/utils.js";
-import "@sveltejs/kit/internal/server";
-import "../../../chunks/state.svelte.js";
 import { u as user } from "../../../chunks/auth.js";
 import { f as formatters, M as MOCK_DATA } from "../../../chunks/formatters.js";
 import { e as escape_html } from "../../../chunks/context.js";
